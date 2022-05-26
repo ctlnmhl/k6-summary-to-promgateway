@@ -3,7 +3,7 @@ const client = require('prom-client')
 //
 // Main function should be imported and wrapped with the function handleSummary
 //
-export function sendMetricsToPromGateway(data, opts = {}) {
+function sendMetricsToPromGateway(data, opts = {}) {
     // Default options
     if (!opts.host) {
         throw new Error("Please provide the host for the prometheus push-gateway")
@@ -21,46 +21,45 @@ export function sendMetricsToPromGateway(data, opts = {}) {
             continue;
         }
         var metricObj = data[metric];
-        if (metricObj.hasOwnProperty('type')){
-            let metricType = metricObj['type'];
-            let metricValues = metricObj['values'];
-            switch (metricType) {
-                case 'trend':
-                    promMetric = createGauge(client, metric, ['quantile'])
-                    for (const [key, value] of Object.entries(metricValues)) {
-                        promMetric.set({ quantile: key }, value)
+        let metricType = metricObj['type'];
+        let metricValues = metricObj['values'];
+        let promMetric;
+        switch (metricType) {
+            case 'trend':
+                promMetric = createGauge(client, metric, ['quantile'])
+                for (const [key, value] of Object.entries(metricValues)) {
+                    promMetric.set({ quantile: key }, value)
+                }
+                break;
+            case 'gauge':
+                promMetric = createGauge(client, metric, [])
+                for (const [key, value] of Object.entries(metricValues)) {
+                    if (key === 'value') {
+                        promMetric.set(value)
                     }
-                    break;
-                case 'gauge':
-                    promMetric = createGauge(client, metric, [])
-                    for (const [key, value] of Object.entries(metricValues)) {
-                        if (key === 'value') {
-                            promMetric.set(value)
-                        }
+                }
+                break;
+            case 'counter':
+                promMetric = createGauge(client, metric, ['rate'])
+                for (const [key, value] of Object.entries(metricValues)) {
+                    if (key === 'count') {
+                        promMetric.set(value);
                     }
-                    break;
-                case 'counter':
-                    promMetric = createGauge(client, metric, ['rate'])
-                    for (const [key, value] of Object.entries(metricValues)) {
-                        if (key === 'count') {
-                            promMetric.set(value);
-                        }
-                        else{
-                            promMetric.set({ rate: 'seconds' }, value);
-                        }
+                    else{
+                        promMetric.set({ rate: 'seconds' }, value);
                     }
-                    break;
-                case 'rate':
-                    promMetric = createGauge(client, metric, [])
-                    for (const [key, value] of Object.entries(metricValues)) {
-                        if (key === 'rate') {
-                            promMetric.set(value)
-                        }
+                }
+                break;
+            case 'rate':
+                promMetric = createGauge(client, metric, [])
+                for (const [key, value] of Object.entries(metricValues)) {
+                    if (key === 'rate') {
+                        promMetric.set(value)
                     }
-                    break;
-                default:
-                    console.log(`Unsupported metric type: ${metricType}.`);
-              }
+                }
+                break;
+            default:
+                console.log(`Unsupported metric type: ${metricType}.`);
         }
     }
     sendMetrics(gateway, opts.job)
@@ -86,7 +85,7 @@ function sendMetrics(gateway, jobName){
     .catch(err => {
         console.log(`Error when sending metrics to the pushgateway: ${err}`);
     });  
-};
+}
 
 function getMetricHelp(metricName){
     return builtinMetrics[metricName.split('{')[0]]
@@ -112,3 +111,5 @@ let builtinMetrics = {
     "http_req_duration":        "Total time for the request",
     "http_req_failed":          "The rate of failed requests",
 }
+
+module.exports=sendMetricsToPromGateway;
