@@ -75,6 +75,23 @@ function createGauge(promClient, metricName, labelNames){
     return gauge;
 }
 
+function sendMetrics(gateway, jobName){
+    console.log("Sending test metrics to the Prometheus Pushgateway")
+
+    gateway.pushAdd({ jobName: jobName })
+    .then(({ resp, body }) => {
+        console.log(`PushGate Response: ${body}`);
+        console.log(`PushGate Response status: ${resp.statusCode}`);
+    })
+    .catch(err => {
+        console.log(`Error when sending metrics to the pushgateway: ${err}`);
+    });  
+};
+
+function getMetricHelp(metricName){
+    return builtinMetrics[metricName.split('{')[0]]
+}
+
 let builtinMetrics = {
     "vus":                "Current number of active virtual users",
     "vus_max":            "Max possible number of virtual users",
@@ -94,21 +111,4 @@ let builtinMetrics = {
     "http_req_receiving":       "Time spent receiving response data",
     "http_req_duration":        "Total time for the request",
     "http_req_failed":          "The rate of failed requests",
-}
-
-function sendMetrics(gateway, jobName){
-    console.log("Sending test metrics to the Prometheus Pushgateway")
-
-    gateway.pushAdd({ jobName: jobName })
-    .then(({ resp, body }) => {
-        console.log(`PushGate Response: ${body}`);
-        console.log(`PushGate Response status: ${resp.statusCode}`);
-    })
-    .catch(err => {
-        console.log(`Error when sending metrics to the pushgateway: ${err}`);
-    });  
-};
-
-function getMetricHelp(metricName){
-    return builtinMetrics[metricName.split('{')[0]]
 }
