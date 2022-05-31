@@ -1,90 +1,80 @@
-const client = require('prom-client')
+const http = require('http');
 
 //
 // Main function should be imported and wrapped with the function handleSummary
 //
 function sendMetricsToPromGateway(data, opts = {}) {
-    // Default options
-    if (!opts.host) {
-        throw new Error("Please provide the host for the prometheus push-gateway")
-    }
-    let gateway = new client.Pushgateway(opts.host);
 
+    if (!opts.url) {
+        throw new Error("Please provide the url for the prometheus push-gateway")
+    }
     if (!opts.job) {
       opts.job = "k6_tests_job"
     }
 
+    let url = `${opts.host}/metrics/job/${opts.job}`;
+    console.log(`Configuring the push-gateway path to ${url}`)
+    
     console.log("Computing test summary metrics...")
 
-    for (let metric in data) {
+    const metrics = data.metrics;
+    let metricsPayload = '';
+
+    for (let metric in metrics) {
         if (metric.includes('{')){
             continue;
         }
-        var metricObj = data[metric];
-        let metricType = metricObj['type'];
+        var metricObj = metrics[metric];
         let metricValues = metricObj['values'];
-        let promMetric;
-        switch (metricType) {
-            case 'trend':
-                promMetric = createGauge(client, metric, ['quantile'])
-                for (const [key, value] of Object.entries(metricValues)) {
-                    promMetric.set({ quantile: key }, value)
-                }
-                break;
-            case 'gauge':
-                promMetric = createGauge(client, metric, [])
-                for (const [key, value] of Object.entries(metricValues)) {
-                    if (key === 'value') {
-                        promMetric.set(value)
-                    }
-                }
-                break;
-            case 'counter':
-                promMetric = createGauge(client, metric, ['rate'])
-                for (const [key, value] of Object.entries(metricValues)) {
-                    if (key === 'count') {
-                        promMetric.set(value);
-                    }
-                    else{
-                        promMetric.set({ rate: 'seconds' }, value);
-                    }
-                }
-                break;
-            case 'rate':
-                promMetric = createGauge(client, metric, [])
-                for (const [key, value] of Object.entries(metricValues)) {
-                    if (key === 'rate') {
-                        promMetric.set(value)
-                    }
-                }
-                break;
-            default:
-                console.log(`Unsupported metric type: ${metricType}.`);
+        
+        metricsPayload += createGauge(metric);
+        for (const [key, value] of Object.entries(metricValues)) {
+            metricsPayload += addValues(metric, value, key);
         }
     }
-    sendMetrics(gateway, opts.job)
+
+    sendMetrics(opts.url, opts.job, metricsPayload)
 }
 
-function createGauge(promClient, metricName, labelNames){
-    const gauge = new promClient.Gauge({
-        name: metricName,
-        help: getMetricHelp(metricName),
-        labelNames: labelNames
-    });
-    return gauge;
+function createGauge(name){
+    let type = "gauge";
+    let help = getMetricHelp(name);
+    return `# TYPE ${name} ${type}\n# HELP ${name} ${help}\n`
 }
 
-function sendMetrics(gateway, jobName){
-    console.log("Sending test metrics to the Prometheus Pushgateway")
+function addValues(metricName, value, key){
+    if (typeof key !== `undefined`){
+        return key.includes('p(') ? `${metricName}{quantile="${key}"} ${value}\n` : `${metricName}{label="${key}"} ${value}\n`;
+    }
+}
 
-    gateway.pushAdd({ jobName: jobName })
-    .then(({ resp, body }) => {
-        console.log(`PushGate Response: ${body}`);
-        console.log(`PushGate Response status: ${resp.statusCode}`);
-    })
-    .catch(err => {
-        console.log(`Error when sending metrics to the pushgateway: ${err}`);
-    });  
+function sendMetrics(url, job, payload){
+    console.log("Sending test metrics to the Prometheus Pushgateway");
+    console.log("payload is: " + payload);
+    
+     var host = new URL(url).host
+
+    const options = {
+        host: host,
+        path: `/metrics/job/${job}`,
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain'}
+    };
+
+    callback = function(response) {
+        var str = ''
+        response.on('data', function (chunk) {
+          str += chunk;
+        });
+      
+        response.on('end', function () {
+          console.log(str);
+        });
+    }
+
+    var req = http.request(options, callback);
+    req.write(payload);
+    req.end(); 
 }
 
 function getMetricHelp(metricName){
@@ -112,4 +102,4 @@ let builtinMetrics = {
     "http_req_failed":          "The rate of failed requests",
 }
 
-module.exports=sendMetricsToPromGateway;
+module.exports = sendMetricsToPromGateway;
