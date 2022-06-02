@@ -1,20 +1,7 @@
-const http = require('http');
-
 //
 // Main function should be imported and wrapped with the function handleSummary
 //
-function sendMetricsToPromGateway(data, opts = {}) {
-
-    if (!opts.url) {
-        throw new Error("Please provide the url for the prometheus push-gateway")
-    }
-    if (!opts.job) {
-      opts.job = "k6_tests_job"
-    }
-
-    let url = `${opts.host}/metrics/job/${opts.job}`;
-    console.log(`Configuring the push-gateway path to ${url}`)
-    
+export function convertMetrics(data) {
     console.log("Computing test summary metrics...")
 
     const metrics = data.metrics;
@@ -32,8 +19,7 @@ function sendMetricsToPromGateway(data, opts = {}) {
             metricsPayload += addValues(metric, value, key);
         }
     }
-
-    sendMetrics(opts.url, opts.job, metricsPayload)
+    return metricsPayload;
 }
 
 function createGauge(name){
@@ -46,35 +32,6 @@ function addValues(metricName, value, key){
     if (typeof key !== `undefined`){
         return key.includes('p(') ? `${metricName}{quantile="${key}"} ${value}\n` : `${metricName}{label="${key}"} ${value}\n`;
     }
-}
-
-function sendMetrics(url, job, payload){
-    console.log("Sending test metrics to the Prometheus Pushgateway");
-    console.log("payload is: " + payload);
-    
-     var host = new URL(url).host
-
-    const options = {
-        host: host,
-        path: `/metrics/job/${job}`,
-        method: 'POST',
-        headers: {'Content-Type': 'text/plain'}
-    };
-
-    callback = function(response) {
-        var str = ''
-        response.on('data', function (chunk) {
-          str += chunk;
-        });
-      
-        response.on('end', function () {
-          console.log(str);
-        });
-    }
-
-    var req = http.request(options, callback);
-    req.write(payload);
-    req.end(); 
 }
 
 function getMetricHelp(metricName){
@@ -101,5 +58,3 @@ let builtinMetrics = {
     "http_req_duration":        "Total time for the request",
     "http_req_failed":          "The rate of failed requests",
 }
-
-module.exports = sendMetricsToPromGateway;
